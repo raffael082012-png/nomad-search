@@ -14,7 +14,28 @@ function decodeEntities(value = '') {
 }
 
 function clean(value = '') {
-  return decodeEntities(value.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ')).trim();
+  return decodeEntities(value).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function xmlValue(block, tag) {
+  const match = block.match(new RegExp(`<${tag}(?:\\s[^>]*)?>([\\s\\S]*?)<\\/${tag}>`, 'i'));
+  return match ? clean(match[1].replace(/^<!\[CDATA\[|\]\]>$/g, '')) : '';
+}
+
+function extractBingResults(xml) {
+  const items = xml.match(/<item(?:\s[^>]*)?>[\s\S]*?<\/item>/gi) || [];
+  const results = [];
+  for (const item of items) {
+    const title = xmlValue(item, 'title');
+    const url = decodeEntities(xmlValue(item, 'link'));
+    const snippet = xmlValue(item, 'description');
+    try {
+      const parsed = new URL(url);
+      if (!['http:', 'https:'].includes(parsed.protocol)) continue;
+      results.push({ title, url: parsed.href, snippet });
+    } catch { /* ignore malformed provider entries */ }
+  }
+  return results;
 }
 
 function extractResults(markup) {
@@ -42,17 +63,43 @@ const server = createServer(async (req, res) => {
     const query = (url.searchParams.get('q') || '').trim();
     if (!query) return sendJson(res, 400, { error: 'Enter a search query.' });
     if (query.length > 500) return sendJson(res, 400, { error: 'Query is too long.' });
-    try {
-      const upstream = await fetch(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`, {
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; NomadSearch/1.0)', 'Accept': 'text/html' },
-        signal: AbortSignal.timeout(12000)
-      });
-      if (!upstream.ok) throw new Error(`Search provider returned ${upstream.status}`);
-      const results = extractResults(await upstream.text());
-      return sendJson(res, 200, { query, results, provider: 'DuckDuckGo' });
-    } catch (error) {
-      return sendJson(res, 502, { error: `Search is temporarily unavailable: ${error.message}` });
+    const providers = [
+      {
+        name: 'Bing',
+        url: `https://www.bing.com/search?format=rss&q=${encodeURIComponent(query)}`,
+        accept: 'application/rss+xml, application/xml, text/xml',
+        parse: extractBingResults
+      },
+      {
+        name: 'DuckDuckGo',
+        url: `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+        accept: 'text/html',
+        parse: extractResults
+      }
+    ];
+    const errors = [];
+    for (const provider of providers) {
+      try {
+        const upstream = await fetch(provider.url, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; NomadSearch/1.0)',
+            'Accept': provider.accept,
+            'Accept-Language': 'en-US,en;q=0.8'
+          },
+          signal: AbortSignal.timeout(6000)
+        });
+        if (!upstream.ok) throw new Error(`HTTP ${upstream.status}`);
+        const results = provider.parse(await upstream.text());
+        if (!results.length) throw new Error('provider returned no parseable results');
+        return sendJson(res, 200, { query, results, provider: provider.name });
+      } catch (error) {
+        const cause = error.cause?.code || error.cause?.message;
+        const detail = cause ? `${error.message} (${cause})` : error.message;
+        console.error(`[search] ${provider.name}: ${detail}`);
+        errors.push(`${provider.name}: ${detail}`);
+      }
     }
+    return sendJson(res, 502, { error: 'Search providers could not be reached. Try again in a moment.' });
   }
   if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });

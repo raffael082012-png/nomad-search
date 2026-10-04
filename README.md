@@ -1,6 +1,6 @@
 # Nomad
 
-Nomad is a minimal search proxy. It retrieves live results from DuckDuckGo's HTML search page and displays titles, destination URLs, and snippets. It adds no topic or category filters.
+Nomad is a minimal search proxy. It retrieves live results from Bing, with DuckDuckGo as a fallback, and displays titles, destination URLs, and snippets. It adds no topic or category filters.
 
 ## Run it
 
@@ -26,4 +26,4 @@ Render documents that web services receive a public `onrender.com` URL and that 
 
 ## Notes
 
-Search requests pass through to DuckDuckGo, so availability, result coverage, and upstream policies depend on that provider. This app does not bypass provider access controls and does not store searches. A public deployment also means the hosting provider receives traffic metadata; review its terms and configure rate limits if needed.
+Search requests pass through to Bing and, if needed, DuckDuckGo, so availability, result coverage, and upstream policies depend on those providers. This app does not bypass provider access controls and does not store searches. A public deployment also means the hosting provider receives traffic metadata; review its terms and configure rate limits if needed.
