@@ -95,6 +95,10 @@ const fastify = Fastify({
     .on('request', (req, res) => {
       res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
       res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+      // Allow nomad.io (or any page) to embed Nomad in an iframe.
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('Content-Security-Policy', 'frame-ancestors *');
+      res.removeHeader('X-Frame-Options');
       handler(req, res);
     })
     .on('upgrade', (req, socket, head) => {
