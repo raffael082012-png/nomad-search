@@ -1,6 +1,6 @@
 # Nomad
 
-Nomad is a search engine with an in-page web proxy. It retrieves live results from Bing, with DuckDuckGo as a fallback, displays titles, destination URLs, and snippets, and opens sites in a full-window Scramjet viewer. Wiki-hosted results are excluded.
+Nomad is a search engine with an in-page web proxy. It retrieves live results from Bing, with DuckDuckGo as a fallback, displays titles, destination URLs, and snippets, and opens sites in a full-window Scramjet viewer with a fullscreen control. The start screen uses subtle animated particles and honors reduced-motion preferences. Wiki-hosted results are excluded.
 
 ## Run it
 
