@@ -1,6 +1,6 @@
 # Nomad
 
-Nomad is a minimal search proxy. It retrieves live results from Bing, with DuckDuckGo as a fallback, and displays titles, destination URLs, and snippets. It adds no topic or category filters.
+Nomad is a minimal search proxy. It retrieves live results from Bing, with DuckDuckGo as a fallback, and displays titles, destination URLs, and snippets. Wiki-hosted results are excluded.
 
 ## Run it
 
@@ -14,7 +14,9 @@ Then open <http://localhost:3000>. Set `PORT` to use a different port.
 
 ## Deploy for visitors
 
-The included `render.yaml` configures a public Render web service. To publish it:
+Nomad is deployed at <https://nomad-en95.onrender.com>. The connected private GitHub repository is `raffael082012-png/nomad-search`; commits to `main` deploy automatically.
+
+For a fresh Render deployment, the included `render.yaml` configures a public web service. To publish it:
 
 1. Create a repository on GitHub named `nomad`.
 2. Upload the *contents* of this folder to the repository root. `render.yaml`, `Dockerfile`, `server.mjs`, `index.html`, and `package.json` should all be at the top level.
@@ -26,4 +28,4 @@ Render documents that web services receive a public `onrender.com` URL and that 
 
 ## Notes
 
-Search requests pass through to Bing and, if needed, DuckDuckGo, so availability, result coverage, and upstream policies depend on those providers. This app does not bypass provider access controls and does not store searches. A public deployment also means the hosting provider receives traffic metadata; review its terms and configure rate limits if needed.
+Search requests pass through to Bing and, if needed, DuckDuckGo, so availability, result coverage, and upstream policies depend on those providers. This app does not bypass provider access controls and does not store searches. A public deployment also means the hosting provider receives traffic metadata; review its terms and configure rate limits if needed. Render's free web services spin down after inactivity; use a paid plan for always-on availability.

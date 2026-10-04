@@ -38,6 +38,13 @@ function extractBingResults(xml) {
   return results;
 }
 
+function isWikiResult(result) {
+  try {
+    const host = new URL(result.url).hostname.toLowerCase();
+    return host.includes('wiki') || ['fandom.com', 'wikia.com', 'miraheze.org'].some(domain => host === domain || host.endsWith(`.${domain}`));
+  } catch { return false; }
+}
+
 function extractResults(markup) {
   const results = [];
   const blocks = markup.match(/<div class="result[^>]*>[\s\S]*?(?=<div class="result[^>]*>|$)/gi) || [];
@@ -89,7 +96,7 @@ const server = createServer(async (req, res) => {
           signal: AbortSignal.timeout(6000)
         });
         if (!upstream.ok) throw new Error(`HTTP ${upstream.status}`);
-        const results = provider.parse(await upstream.text());
+        const results = provider.parse(await upstream.text()).filter(result => !isWikiResult(result));
         if (!results.length) throw new Error('provider returned no parseable results');
         return sendJson(res, 200, { query, results, provider: provider.name });
       } catch (error) {
