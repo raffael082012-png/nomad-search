@@ -31,7 +31,7 @@
     <section id="viewer" class="viewer" hidden aria-label="Website viewer">
       <div class="viewer-bar"><button id="back-results" type="button">← Back to results</button><span id="viewer-url" class="viewer-url"></span><a id="open-original" target="_blank" rel="noopener noreferrer">Open original ↗</a></div>
       <p class="viewer-note">Some websites block in-page viewing. If this frame stays blank, open the original site.</p>
-      <iframe id="viewer-frame" title="Selected search result" referrerpolicy="no-referrer"></iframe>
+      <iframe id="viewer-frame" title="Selected search result" sandbox="allow-scripts allow-forms" referrerpolicy="no-referrer"></iframe>
     </section>
   </main>
   <script>
@@ -39,7 +39,7 @@
     const searchUi=document.querySelector('#search-ui'), viewer=document.querySelector('#viewer'), frame=document.querySelector('#viewer-frame'), viewerUrl=document.querySelector('#viewer-url'), original=document.querySelector('#open-original');
     const params=new URLSearchParams(location.search); if(params.has('q')){input.value=params.get('q');runSearch(input.value)}
     form.addEventListener('submit',e=>{e.preventDefault();const q=input.value.trim();if(!q)return;const next=new URL(location.href);next.searchParams.set('q',q);history.replaceState({},'',next);runSearch(q)});
-    function showViewer(raw){let target;try{target=new URL(raw)}catch{return}if(!['http:','https:'].includes(target.protocol))return;viewerUrl.textContent=target.href;original.href=target.href;frame.src=target.href;searchUi.hidden=true;viewer.hidden=false;window.scrollTo(0,0)}
+    function showViewer(raw){let target;try{target=new URL(raw)}catch{return}if(!['http:','https:'].includes(target.protocol))return;viewerUrl.textContent=target.href;original.href=target.href;frame.src=`/browse?url=${encodeURIComponent(target.href)}`;searchUi.hidden=true;viewer.hidden=false;window.scrollTo(0,0)}
     document.querySelector('#back-results').addEventListener('click',()=>{frame.src='about:blank';viewer.hidden=true;searchUi.hidden=false;history.replaceState({},'',location.pathname+location.search);window.scrollTo(0,0)});
     const initialView=new URLSearchParams(location.hash.slice(1)).get('view');if(initialView)showViewer(initialView);
     async function runSearch(q){button.disabled=true;status.textContent='Searching the web…';results.replaceChildren();count.textContent='';try{const response=await fetch(`/api/search?q=${encodeURIComponent(q)}`);const data=await response.json();if(!response.ok)throw new Error(data.error||'Search failed');count.textContent=`${data.results.length} results via ${data.provider}`;status.textContent=data.results.length?'':`No results found for “${q}”.`;for(const item of data.results){const article=document.createElement('article');article.className='result';const heading=document.createElement('h2'),link=document.createElement('a');link.href=item.url;link.textContent=item.title||item.url;link.addEventListener('click',event=>{event.preventDefault();history.replaceState({},'',`${location.pathname}${location.search}#view=${encodeURIComponent(item.url)}`);showViewer(item.url)});heading.append(link);const address=document.createElement('div');address.className='url';address.textContent=item.url;const snippet=document.createElement('p');snippet.className='snippet';snippet.textContent=item.snippet;article.append(heading,address,snippet);results.append(article)}}catch(error){status.textContent=error.message;count.textContent=''}finally{button.disabled=false}}
