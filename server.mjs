@@ -45,7 +45,12 @@ function extractBingResults(xml) {
 function isWikiResult(result) {
   try {
     const host = new URL(result.url).hostname.toLowerCase();
-    return host.includes('wiki') || ['wiktionary.org', 'fandom.com', 'wikia.com', 'miraheze.org'].some(domain => host === domain || host.endsWith(`.${domain}`));
+    const wikiDomains = [
+      'wikipedia.org', 'wikimedia.org', 'wiktionary.org', 'wikibooks.org',
+      'wikiquote.org', 'wikisource.org', 'wikinews.org', 'wikiversity.org',
+      'wikivoyage.org', 'fandom.com', 'wikia.com', 'miraheze.org', 'wiki.gg'
+    ];
+    return wikiDomains.some(domain => host === domain || host.endsWith(`.${domain}`));
   } catch { return false; }
 }
 
@@ -231,16 +236,17 @@ const server = createServer(async (req, res) => {
     const query = (url.searchParams.get('q') || '').trim();
     if (!query) return sendJson(res, 400, { error: 'Enter a search query.' });
     if (query.length > 500) return sendJson(res, 400, { error: 'Query is too long.' });
+    const searchQuery = `${query} -site:wikipedia.org -site:wikimedia.org -site:wiktionary.org -site:fandom.com -site:wikia.com`;
     const providers = [
       {
         name: 'Bing',
-        url: `https://www.bing.com/search?format=rss&q=${encodeURIComponent(query)}`,
+        url: `https://www.bing.com/search?format=rss&q=${encodeURIComponent(searchQuery)}`,
         accept: 'application/rss+xml, application/xml, text/xml',
         parse: extractBingResults
       },
       {
         name: 'DuckDuckGo',
-        url: `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`,
+        url: `https://html.duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`,
         accept: 'text/html',
         parse: extractResults
       }
