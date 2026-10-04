@@ -2,6 +2,7 @@ import { createServer, request as httpRequest } from 'node:http';
 import { request as httpsRequest } from 'node:https';
 import { lookup as dnsLookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
+import { brotliDecompressSync, gunzipSync, inflateSync } from 'node:zlib';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -147,6 +148,15 @@ function proxyPath(url) {
   return `/browse?url=${encodeURIComponent(url)}`;
 }
 
+function decodeResponseBody(body, encoding = '') {
+  const value = String(encoding).toLowerCase().trim();
+  const options = { maxOutputLength: maxPageBytes };
+  if (value === 'br') return brotliDecompressSync(body, options);
+  if (value === 'gzip' || value === 'x-gzip') return gunzipSync(body, options);
+  if (value === 'deflate') return inflateSync(body, options);
+  return body;
+}
+
 function rewriteCss(css, baseUrl) {
   return css.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/gi, (whole, quote, raw) => {
     try {
@@ -198,7 +208,7 @@ async function serveBrowse(url, res) {
     const destination = new URL(url);
     const response = await fetchPublicPage(destination.href);
     const contentType = String(response.headers['content-type'] || 'application/octet-stream');
-    let body = response.body;
+    let body = decodeResponseBody(response.body, response.headers['content-encoding']);
     if (/^(text\/html|application\/xhtml\+xml)/i.test(contentType)) {
       body = Buffer.from(rewriteHtml(body.toString('utf8'), response.url));
     } else if (/^text\/css/i.test(contentType)) {
