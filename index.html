@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f3ee">
+  <title>Nomad — Search without the noise</title>
+  <style>
+    :root{color-scheme:light;--paper:#f5f3ee;--ink:#17211d;--muted:#69736d;--green:#315b43;--line:#d9ddd5;--serif:Georgia,'Times New Roman',serif;--sans:Inter,ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif}
+    *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--sans);min-height:100vh}
+    header{height:76px;padding:0 clamp(22px,6vw,88px);display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
+    .brand{font-family:var(--serif);font-size:25px;font-weight:700;letter-spacing:-1.2px}.brand span{color:var(--green)}.tag{font-size:12px;color:var(--muted);letter-spacing:.11em;text-transform:uppercase}
+    main{max-width:900px;margin:0 auto;padding:clamp(68px,12vh,132px) 24px 80px}.hero{text-align:center;margin-bottom:38px}.eyebrow{color:var(--green);font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase}.hero h1{font-family:var(--serif);font-weight:400;font-size:clamp(48px,8vw,84px);letter-spacing:-.055em;line-height:.98;margin:18px 0 15px}.hero p{font-size:15px;line-height:1.6;color:var(--muted);margin:0}
+    form{display:flex;gap:8px;padding:7px;background:#fff;border:1px solid #e1e2dc;border-radius:9px;box-shadow:0 12px 36px #263c2a0c;max-width:730px;margin:0 auto}input{flex:1;min-width:0;border:0;outline:0;padding:13px 14px;background:transparent;font:16px var(--sans);color:var(--ink)}input::placeholder{color:#9aa19c}button{border:0;border-radius:6px;background:var(--green);color:white;padding:0 23px;font:600 14px var(--sans);cursor:pointer;transition:background .15s}button:hover{background:#244833}button:disabled{opacity:.65;cursor:wait}
+    .meta{max-width:730px;margin:22px auto 0;display:flex;justify-content:space-between;color:var(--muted);font-size:12px}.status{max-width:730px;margin:28px auto 0;color:var(--muted);font-size:14px;text-align:center}.results{max-width:730px;margin:34px auto 0}.result{padding:19px 0 21px;border-bottom:1px solid var(--line)}.result a{color:var(--green);text-decoration:none}.result a:hover{text-decoration:underline}.result h2{font-size:19px;line-height:1.35;font-weight:550;margin:0 0 6px}.url{font-size:12px;color:#707b72;overflow-wrap:anywhere;margin-bottom:7px}.snippet{font-size:14px;line-height:1.6;color:#59635d;margin:0}.empty{padding:34px 0;text-align:center;color:var(--muted);font-size:14px}
+    footer{max-width:730px;margin:60px auto 0;border-top:1px solid var(--line);padding-top:17px;display:flex;justify-content:space-between;gap:16px;color:#858d87;font-size:11px;line-height:1.5}
+    @media(max-width:540px){header{height:64px}.tag{font-size:10px}main{padding-top:70px}form{gap:3px}input{padding:12px 9px;font-size:14px}button{padding:0 15px}.meta{font-size:11px}footer{flex-direction:column;gap:4px}}
+  </style>
+</head>
+<body>
+  <header><div class="brand">no<span>mad</span></div><div class="tag">The open web, in view</div></header>
+  <main>
+    <section class="hero"><div class="eyebrow">Search on your terms</div><h1>Go where curiosity goes.</h1><p>One query. The open web. No hand-picked topic filters.</p></section>
+    <form id="search-form" role="search"><input id="query" name="q" type="search" placeholder="What are you looking for?" autocomplete="off" aria-label="Search the web"><button id="submit" type="submit">Search <span aria-hidden="true">↗</span></button></form>
+    <div class="meta"><span id="count">Search the web</span><span>Powered by DuckDuckGo</span></div>
+    <div id="status" class="status" aria-live="polite">Enter a query to get started.</div><section id="results" class="results" aria-label="Search results"></section>
+    <footer><span>Nomad sends your query to DuckDuckGo to retrieve live web results.</span><span>No topic filters added by Nomad.</span></footer>
+  </main>
+  <script>
+    const form=document.querySelector('#search-form'), input=document.querySelector('#query'), button=document.querySelector('#submit'), status=document.querySelector('#status'), results=document.querySelector('#results'), count=document.querySelector('#count');
+    const params=new URLSearchParams(location.search); if(params.has('q')){input.value=params.get('q');runSearch(input.value)}
+    form.addEventListener('submit',e=>{e.preventDefault();const q=input.value.trim();if(!q)return;const next=new URL(location.href);next.searchParams.set('q',q);history.replaceState({},'',next);runSearch(q)});
+    async function runSearch(q){button.disabled=true;status.textContent='Searching the web…';results.replaceChildren();count.textContent='';try{const response=await fetch(`/api/search?q=${encodeURIComponent(q)}`);const data=await response.json();if(!response.ok)throw new Error(data.error||'Search failed');count.textContent=`${data.results.length} results`;status.textContent=data.results.length?'':`No results found for “${q}”.`;for(const item of data.results){const article=document.createElement('article');article.className='result';const heading=document.createElement('h2'),link=document.createElement('a');link.href=item.url;link.target='_blank';link.rel='noopener noreferrer';link.textContent=item.title||item.url;heading.append(link);const address=document.createElement('div');address.className='url';address.textContent=item.url;const snippet=document.createElement('p');snippet.className='snippet';snippet.textContent=item.snippet;article.append(heading,address,snippet);results.append(article)}}catch(error){status.textContent=error.message;count.textContent=''}finally{button.disabled=false}}
+  </script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "nomad-search-proxy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A minimal search proxy with unfiltered web queries.",
+  "scripts": {
+    "start": "node server.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
