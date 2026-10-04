@@ -41,7 +41,7 @@ function extractBingResults(xml) {
 function isWikiResult(result) {
   try {
     const host = new URL(result.url).hostname.toLowerCase();
-    return host.includes('wiki') || ['fandom.com', 'wikia.com', 'miraheze.org'].some(domain => host === domain || host.endsWith(`.${domain}`));
+    return host.includes('wiki') || ['wiktionary.org', 'fandom.com', 'wikia.com', 'miraheze.org'].some(domain => host === domain || host.endsWith(`.${domain}`));
   } catch { return false; }
 }
 
