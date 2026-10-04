@@ -166,15 +166,28 @@ function rewriteHtml(markup, pageUrl) {
   let baseUrl = pageUrl;
   try { if (declaredBase) baseUrl = new URL(declaredBase[2], pageUrl); } catch { /* use page URL */ }
   let rewritten = markup.replace(/<base\b[^>]*>/gi, '');
-  rewritten = rewritten.replace(/\s(href|src|action|poster|data-src|data-href)\s*=\s*(["'])(.*?)\2/gi, (whole, name, quote, raw) => {
+  rewritten = rewritten.replace(/\s(href|src|srcset|action|poster|data-src|data-href)\s*=\s*(["'])(.*?)\2/gi, (whole, name, quote, raw) => {
     const value = raw.trim();
     if (!value || value.startsWith('#') || /^(?:data:|blob:|javascript:|mailto:|tel:|about:)/i.test(value)) return whole;
+    if (name.toLowerCase() === 'srcset') {
+      const candidates = value.split(',').map(candidate => {
+        const match = candidate.match(/^(\s*)(\S+)([\s\S]*)$/);
+        if (!match || /^(?:data:|blob:)/i.test(match[2])) return candidate;
+        try {
+          const url = new URL(match[2], baseUrl);
+          return ['http:', 'https:'].includes(url.protocol) ? `${match[1]}${proxyPath(url.href)}${match[3]}` : candidate;
+        } catch { return candidate; }
+      });
+      return ` ${name}=${quote}${candidates.join(',')}${quote}`;
+    }
     try {
       const url = new URL(value, baseUrl);
       if (!['http:', 'https:'].includes(url.protocol)) return whole;
       return ` ${name}=${quote}${proxyPath(url.href)}${quote}`;
     } catch { return whole; }
   });
+  // Rewritten CSS/JS bytes no longer match upstream Subresource Integrity hashes.
+  rewritten = rewritten.replace(/\s+integrity\s*=\s*(["']).*?\1/gi, '');
   rewritten = rewritten.replace(/\sstyle\s*=\s*(["'])(.*?)\1/gi, (whole, quote, css) => ` style=${quote}${rewriteCss(css, baseUrl)}${quote}`);
   rewritten = rewritten.replace(/<a\b(?![^>]*\btarget\s*=)/gi, '<a target="_self"');
   return rewritten.replace(/<style\b([^>]*)>([\s\S]*?)<\/style>/gi, (_whole, attrs, css) => `<style${attrs}>${rewriteCss(css, baseUrl)}</style>`);
