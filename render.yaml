@@ -5,3 +5,6 @@ services:
     plan: free
     dockerfilePath: ./Dockerfile
     healthCheckPath: /
+    envVars:
+      - key: PUBLIC_ORIGIN
+        value: https://nomad-en95.onrender.com

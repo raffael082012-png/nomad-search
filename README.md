@@ -1,6 +1,6 @@
 # Nomad
 
-Nomad is a minimal search proxy. It retrieves live results from Bing, with DuckDuckGo as a fallback, displays titles, destination URLs, and snippets, and opens result pages through its in-app page relay. Wiki-hosted results are excluded.
+Nomad is a search engine with an in-page web proxy. It retrieves live results from Bing, with DuckDuckGo as a fallback, displays titles, destination URLs, and snippets, and opens sites in a full-window Scramjet viewer. Wiki-hosted results are excluded.
 
 ## Run it
 
@@ -14,7 +14,7 @@ Then open <http://localhost:3000>. Set `PORT` to use a different port.
 
 ## Deploy for visitors
 
-Nomad is deployed at <https://nomad-en95.onrender.com>. The connected private GitHub repository is `raffael082012-png/nomad-search`; commits to `main` deploy automatically.
+Nomad is deployed at <https://nomad-en95.onrender.com>. Its source is published at <https://github.com/raffael082012-png/nomad-search>; commits to `main` deploy automatically.
 
 For a fresh Render deployment, the included `render.yaml` configures a public web service. To publish it:
 
@@ -28,4 +28,4 @@ Render documents that web services receive a public `onrender.com` URL and that 
 
 ## Notes
 
-Search requests pass through to Bing and, if needed, DuckDuckGo, so availability, result coverage, and upstream policies depend on those providers. The page relay supports public HTTP(S) pages and does not forward visitor cookies or sign-in credentials. Some sign-in flows and complex web apps may not work in the isolated viewer. Nomad does not store searches. A public deployment also means the hosting provider receives traffic metadata; review its terms and configure rate limits if needed. Render's free web services spin down after inactivity; use a paid plan for always-on availability.
+Search requests pass through to Bing and, if needed, DuckDuckGo, so coverage and availability depend on those providers. Search results exclude common wiki networks. Sites open inside Nomad through Scramjet; third-party sites can still block service, require their own sign-in, or limit access from Render's datacenter IPs. This project uses Scramjet under the GNU Affero General Public License; see the upstream [Scramjet source and license](https://github.com/MercuryWorkshop/scramjet). Nomad does not store searches. Render's free web services can spin down after inactivity.

@@ -1,16 +1,15 @@
-import { createServer, request as httpRequest } from 'node:http';
-import { request as httpsRequest } from 'node:https';
-import { lookup as dnsLookup } from 'node:dns/promises';
-import { isIP } from 'node:net';
-import { brotliDecompressSync, gunzipSync, inflateSync } from 'node:zlib';
-import { readFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import Fastify from 'fastify';
+import fastifyStatic from '@fastify/static';
+import { server as wisp, logging } from '@mercuryworkshop/wisp-js/server';
+import { scramjetPath } from '@mercuryworkshop/scramjet/path';
+import { libcurlPath } from '@mercuryworkshop/libcurl-transport';
+import { baremuxPath } from '@mercuryworkshop/bare-mux/node';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.PORT || 3000);
-const html = await readFile(path.join(here, 'index.html'));
-const maxPageBytes = 8 * 1024 * 1024;
 
 function decodeEntities(value = '') {
   return value.replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'")
@@ -55,185 +54,6 @@ function isWikiResult(result) {
   } catch { return false; }
 }
 
-function publicAddress(address) {
-  const family = isIP(address);
-  if (family === 4) {
-    const parts = address.split('.').map(Number);
-    const value = ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
-    const blocked = [
-      [0x00000000, 8], [0x0a000000, 8], [0x64400000, 10], [0x7f000000, 8],
-      [0xa9fe0000, 16], [0xac100000, 12], [0xc0000000, 24], [0xc0000200, 24],
-      [0xc0586300, 24], [0xc0a80000, 16], [0xc6120000, 15], [0xc6336400, 24],
-      [0xcb007100, 24], [0xe0000000, 4], [0xf0000000, 4]
-    ];
-    return !blocked.some(([network, bits]) => (value >>> (32 - bits)) === (network >>> (32 - bits)));
-  }
-  if (family === 6) {
-    const host = address.toLowerCase().split('%')[0];
-    return host !== '::' && host !== '::1' && !host.startsWith('::ffff:') &&
-      !/^f[cd]/.test(host) && !/^fe[89ab]/.test(host) && !host.startsWith('ff') && !host.startsWith('2001:db8:');
-  }
-  return false;
-}
-
-async function resolvePublicHost(hostname) {
-  const host = hostname.replace(/^\[|\]$/g, '').toLowerCase();
-  if (host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal') || host.endsWith('.test')) {
-    throw new Error('This address is not publicly reachable.');
-  }
-  const records = isIP(host) ? [{ address: host, family: isIP(host) }] : await dnsLookup(host, { all: true, verbatim: true });
-  if (!records.length || records.some(record => !publicAddress(record.address))) {
-    throw new Error('This address is not publicly reachable.');
-  }
-  return records;
-}
-
-function requestPublicPage(url, records) {
-  return new Promise((resolve, reject) => {
-    const host = url.hostname.replace(/^\[|\]$/g, '');
-    const transport = url.protocol === 'https:' ? httpsRequest : httpRequest;
-    const request = transport({
-      protocol: url.protocol,
-      hostname: host,
-      port: url.port || undefined,
-      path: `${url.pathname}${url.search}`,
-      method: 'GET',
-      servername: isIP(host) ? undefined : host,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; NomadViewer/1.0)',
-        'Accept': 'text/html,application/xhtml+xml,text/css,application/javascript,image/*,font/*,*/*;q=0.8',
-        'Accept-Encoding': 'identity'
-      },
-      lookup: (_hostname, options, callback) => {
-        if (options.all) callback(null, records);
-        else callback(null, records[0].address, records[0].family);
-      }
-    }, response => {
-      const chunks = [];
-      let size = 0;
-      response.on('data', chunk => {
-        size += chunk.length;
-        if (size > maxPageBytes) request.destroy(new Error('Page is larger than Nomad can display.'));
-        else chunks.push(chunk);
-      });
-      response.on('end', () => resolve({
-        status: response.statusCode || 502,
-        headers: response.headers,
-        body: Buffer.concat(chunks)
-      }));
-    });
-    request.setTimeout(9000, () => request.destroy(new Error('Destination took too long to respond.')));
-    request.on('error', reject);
-    request.end();
-  });
-}
-
-async function fetchPublicPage(startUrl) {
-  let current = new URL(startUrl);
-  for (let redirects = 0; redirects <= 5; redirects++) {
-    if (!['http:', 'https:'].includes(current.protocol)) throw new Error('Only public HTTP and HTTPS pages can be opened.');
-    const records = await resolvePublicHost(current.hostname);
-    const response = await requestPublicPage(current, records);
-    const location = response.headers.location;
-    if ([301, 302, 303, 307, 308].includes(response.status) && location) {
-      current = new URL(location, current);
-      continue;
-    }
-    return { ...response, url: current };
-  }
-  throw new Error('Too many redirects.');
-}
-
-function proxyPath(url) {
-  return `/browse?url=${encodeURIComponent(url)}`;
-}
-
-function decodeResponseBody(body, encoding = '') {
-  const value = String(encoding).toLowerCase().trim();
-  const options = { maxOutputLength: maxPageBytes };
-  if (value === 'br') return brotliDecompressSync(body, options);
-  if (value === 'gzip' || value === 'x-gzip') return gunzipSync(body, options);
-  if (value === 'deflate') return inflateSync(body, options);
-  return body;
-}
-
-function rewriteCss(css, baseUrl) {
-  return css.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/gi, (whole, quote, raw) => {
-    try {
-      const url = new URL(raw.trim(), baseUrl);
-      return ['http:', 'https:'].includes(url.protocol) ? `url("${proxyPath(url.href)}")` : whole;
-    } catch { return whole; }
-  }).replace(/@import\s+(['"])(.*?)\1/gi, (whole, quote, raw) => {
-    try {
-      const url = new URL(raw, baseUrl);
-      return ['http:', 'https:'].includes(url.protocol) ? `@import "${proxyPath(url.href)}"` : whole;
-    } catch { return whole; }
-  });
-}
-
-function rewriteHtml(markup, pageUrl) {
-  const declaredBase = markup.match(/<base\b[^>]*href\s*=\s*(["'])(.*?)\1[^>]*>/i);
-  let baseUrl = pageUrl;
-  try { if (declaredBase) baseUrl = new URL(declaredBase[2], pageUrl); } catch { /* use page URL */ }
-  let rewritten = markup.replace(/<base\b[^>]*>/gi, '');
-  rewritten = rewritten.replace(/\s(href|src|srcset|action|poster|data-src|data-href)\s*=\s*(["'])(.*?)\2/gi, (whole, name, quote, raw) => {
-    const value = raw.trim();
-    if (!value || value.startsWith('#') || /^(?:data:|blob:|javascript:|mailto:|tel:|about:)/i.test(value)) return whole;
-    if (name.toLowerCase() === 'srcset') {
-      const candidates = value.split(',').map(candidate => {
-        const match = candidate.match(/^(\s*)(\S+)([\s\S]*)$/);
-        if (!match || /^(?:data:|blob:)/i.test(match[2])) return candidate;
-        try {
-          const url = new URL(match[2], baseUrl);
-          return ['http:', 'https:'].includes(url.protocol) ? `${match[1]}${proxyPath(url.href)}${match[3]}` : candidate;
-        } catch { return candidate; }
-      });
-      return ` ${name}=${quote}${candidates.join(',')}${quote}`;
-    }
-    try {
-      const url = new URL(value, baseUrl);
-      if (!['http:', 'https:'].includes(url.protocol)) return whole;
-      return ` ${name}=${quote}${proxyPath(url.href)}${quote}`;
-    } catch { return whole; }
-  });
-  // Rewritten CSS/JS bytes no longer match upstream Subresource Integrity hashes.
-  rewritten = rewritten.replace(/\s+integrity\s*=\s*(["']).*?\1/gi, '');
-  rewritten = rewritten.replace(/\sstyle\s*=\s*(["'])(.*?)\1/gi, (whole, quote, css) => ` style=${quote}${rewriteCss(css, baseUrl)}${quote}`);
-  rewritten = rewritten.replace(/<a\b(?![^>]*\btarget\s*=)/gi, '<a target="_self"');
-  rewritten = rewritten.replace(/<style\b([^>]*)>([\s\S]*?)<\/style>/gi, (_whole, attrs, css) => `<style${attrs}>${rewriteCss(css, baseUrl)}</style>`);
-  const storageShim = `<script>(()=>{const createStorage=()=>{const data=new Map();return{get length(){return data.size},key:i=>Array.from(data.keys())[i]??null,getItem:k=>data.has(String(k))?data.get(String(k)):null,setItem:(k,v)=>data.set(String(k),String(v)),removeItem:k=>data.delete(String(k)),clear:()=>data.clear()}};for(const name of ['localStorage','sessionStorage']){try{Object.defineProperty(window,name,{configurable:true,value:createStorage()})}catch{}}})();<\/script>`;
-  const head = rewritten.match(/<head\b[^>]*>/i);
-  if (head) rewritten = rewritten.replace(head[0], `${head[0]}${storageShim}`);
-  else rewritten = `${storageShim}${rewritten}`;
-  return rewritten;
-}
-
-async function serveBrowse(url, res) {
-  try {
-    const destination = new URL(url);
-    const response = await fetchPublicPage(destination.href);
-    const contentType = String(response.headers['content-type'] || 'application/octet-stream');
-    let body = decodeResponseBody(response.body, response.headers['content-encoding']);
-    if (/^(text\/html|application\/xhtml\+xml)/i.test(contentType)) {
-      body = Buffer.from(rewriteHtml(body.toString('utf8'), response.url));
-    } else if (/^text\/css/i.test(contentType)) {
-      body = Buffer.from(rewriteCss(body.toString('utf8'), response.url));
-    }
-    res.writeHead(response.status, {
-      'content-type': contentType,
-      'cache-control': 'no-store',
-      'access-control-allow-origin': '*',
-      'content-security-policy': "default-src * data: blob:; script-src * 'unsafe-inline' 'unsafe-eval' data: blob:; style-src * 'unsafe-inline' data: blob:; img-src * data: blob:; font-src * data: blob:; connect-src * data: blob:; frame-src * data: blob:; form-action *; base-uri 'self'"
-    });
-    res.end(body);
-  } catch (error) {
-    console.error(`[viewer] ${error.message}`);
-    const message = error.message.includes('publicly reachable') ? error.message : 'Nomad could not load this page. Try opening the original site.';
-    res.writeHead(502, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-    res.end(`<!doctype html><meta charset="utf-8"><style>body{font:16px system-ui;background:#07111f;color:#eaf2ff;padding:28px}a{color:#6caeff}</style><p>${message}</p>`);
-  }
-}
-
 function extractResults(markup) {
   const results = [];
   const blocks = markup.match(/<div class="result[^>]*>[\s\S]*?(?=<div class="result[^>]*>|$)/gi) || [];
@@ -253,67 +73,89 @@ function extractResults(markup) {
   return results;
 }
 
-const server = createServer(async (req, res) => {
-  const url = new URL(req.url || '/', `http://${req.headers.host || 'localhost'}`);
-  if (req.method === 'GET' && url.pathname === '/browse') {
-    const destination = url.searchParams.get('url');
-    if (!destination) return sendJson(res, 400, { error: 'Missing page URL.' });
-    return serveBrowse(destination, res);
-  }
-  if (req.method === 'GET' && url.pathname === '/api/search') {
-    const query = (url.searchParams.get('q') || '').trim();
-    if (!query) return sendJson(res, 400, { error: 'Enter a search query.' });
-    if (query.length > 500) return sendJson(res, 400, { error: 'Query is too long.' });
-    const searchQuery = `${query} -site:wikipedia.org -site:wikimedia.org -site:wiktionary.org -site:fandom.com -site:wikia.com`;
-    const providers = [
-      {
-        name: 'Bing',
-        url: `https://www.bing.com/search?format=rss&q=${encodeURIComponent(searchQuery)}`,
-        accept: 'application/rss+xml, application/xml, text/xml',
-        parse: extractBingResults
-      },
-      {
-        name: 'DuckDuckGo',
-        url: `https://html.duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`,
-        accept: 'text/html',
-        parse: extractResults
-      }
-    ];
-    const errors = [];
-    for (const provider of providers) {
-      try {
-        const upstream = await fetch(provider.url, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (compatible; NomadSearch/1.0)',
-            'Accept': provider.accept,
-            'Accept-Language': 'en-US,en;q=0.8'
-          },
-          signal: AbortSignal.timeout(6000)
-        });
-        if (!upstream.ok) throw new Error(`HTTP ${upstream.status}`);
-        const results = provider.parse(await upstream.text()).filter(result => !isWikiResult(result));
-        if (!results.length) throw new Error('provider returned no parseable results');
-        return sendJson(res, 200, { query, results, provider: provider.name });
-      } catch (error) {
-        const cause = error.cause?.code || error.cause?.message;
-        const detail = cause ? `${error.message} (${cause})` : error.message;
-        console.error(`[search] ${provider.name}: ${detail}`);
-        errors.push(`${provider.name}: ${detail}`);
-      }
-    }
-    return sendJson(res, 502, { error: 'Search providers could not be reached. Try again in a moment.' });
-  }
-  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/index.html')) {
-    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-    return res.end(html);
-  }
-  res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-  res.end('Not found');
+logging.set_level(logging.NONE);
+Object.assign(wisp.options, {
+  allow_udp_streams: false,
+  hostname_blacklist: [
+    /^(?:localhost|.*\.localhost|.*\.local|.*\.internal)$/i,
+    /^(?:127\.|10\.|192\.168\.|169\.254\.)/,
+    /^172\.(?:1[6-9]|2\d|3[01])\./
+  ],
+  dns_servers: ['1.1.1.1', '1.0.0.1']
 });
 
-function sendJson(res, status, body) {
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
-  res.end(JSON.stringify(body));
-}
+const allowedOrigins = new Set([
+  process.env.PUBLIC_ORIGIN,
+  'https://nomad-en95.onrender.com',
+  'http://localhost:3000'
+].filter(Boolean));
+const fastify = Fastify({
+  logger: false,
+  serverFactory: handler => createServer()
+    .on('request', (req, res) => {
+      res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+      res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+      handler(req, res);
+    })
+    .on('upgrade', (req, socket, head) => {
+      if (req.url !== '/wisp/' || !allowedOrigins.has(req.headers.origin)) {
+        socket.end('HTTP/1.1 403 Forbidden\r\n\r\n');
+        return;
+      }
+      wisp.routeRequest(req, socket, head);
+    })
+});
 
-server.listen(port, '0.0.0.0', () => console.log(`Nomad is listening on port ${port}`));
+fastify.get('/', async (_request, reply) => reply.type('text/html; charset=utf-8').sendFile('index.html'));
+fastify.get('/api/search', async (request, reply) => {
+  const query = String(request.query.q || '').trim();
+  if (!query) return reply.code(400).send({ error: 'Enter a search query.' });
+  if (query.length > 500) return reply.code(400).send({ error: 'Query is too long.' });
+  const searchQuery = `${query} -site:wikipedia.org -site:wikimedia.org -site:wiktionary.org -site:fandom.com -site:wikia.com`;
+  const providers = [
+    {
+      name: 'Bing',
+      url: `https://www.bing.com/search?format=rss&q=${encodeURIComponent(searchQuery)}`,
+      accept: 'application/rss+xml, application/xml, text/xml',
+      parse: extractBingResults
+    },
+    {
+      name: 'DuckDuckGo',
+      url: `https://html.duckduckgo.com/html/?q=${encodeURIComponent(searchQuery)}`,
+      accept: 'text/html',
+      parse: extractResults
+    }
+  ];
+  for (const provider of providers) {
+    try {
+      const upstream = await fetch(provider.url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; NomadSearch/1.0)',
+          Accept: provider.accept,
+          'Accept-Language': 'en-US,en;q=0.8'
+        },
+        signal: AbortSignal.timeout(6000)
+      });
+      if (!upstream.ok) throw new Error(`HTTP ${upstream.status}`);
+      const results = provider.parse(await upstream.text()).filter(result => !isWikiResult(result));
+      if (!results.length) throw new Error('provider returned no parseable results');
+      return reply.header('cache-control', 'no-store').send({ query, results, provider: provider.name });
+    } catch (error) {
+      const cause = error.cause?.code || error.cause?.message;
+      console.error(`[search] ${provider.name}: ${cause ? `${error.message} (${cause})` : error.message}`);
+    }
+  }
+  return reply.code(502).send({ error: 'Search providers could not be reached. Try again in a moment.' });
+});
+
+fastify.register(fastifyStatic, { root: here, decorateReply: true });
+fastify.register(fastifyStatic, { root: scramjetPath, prefix: '/scram/', decorateReply: false });
+fastify.register(fastifyStatic, { root: libcurlPath, prefix: '/libcurl/', decorateReply: false });
+fastify.register(fastifyStatic, { root: baremuxPath, prefix: '/baremux/', decorateReply: false });
+
+fastify.listen({ port, host: '0.0.0.0' }).then(() => {
+  console.log(`Nomad is listening on port ${port}`);
+}).catch(error => {
+  console.error(error);
+  process.exit(1);
+});
