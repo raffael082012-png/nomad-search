@@ -200,7 +200,12 @@ function rewriteHtml(markup, pageUrl) {
   rewritten = rewritten.replace(/\s+integrity\s*=\s*(["']).*?\1/gi, '');
   rewritten = rewritten.replace(/\sstyle\s*=\s*(["'])(.*?)\1/gi, (whole, quote, css) => ` style=${quote}${rewriteCss(css, baseUrl)}${quote}`);
   rewritten = rewritten.replace(/<a\b(?![^>]*\btarget\s*=)/gi, '<a target="_self"');
-  return rewritten.replace(/<style\b([^>]*)>([\s\S]*?)<\/style>/gi, (_whole, attrs, css) => `<style${attrs}>${rewriteCss(css, baseUrl)}</style>`);
+  rewritten = rewritten.replace(/<style\b([^>]*)>([\s\S]*?)<\/style>/gi, (_whole, attrs, css) => `<style${attrs}>${rewriteCss(css, baseUrl)}</style>`);
+  const storageShim = `<script>(()=>{const createStorage=()=>{const data=new Map();return{get length(){return data.size},key:i=>Array.from(data.keys())[i]??null,getItem:k=>data.has(String(k))?data.get(String(k)):null,setItem:(k,v)=>data.set(String(k),String(v)),removeItem:k=>data.delete(String(k)),clear:()=>data.clear()}};for(const name of ['localStorage','sessionStorage']){try{Object.defineProperty(window,name,{configurable:true,value:createStorage()})}catch{}}})();<\/script>`;
+  const head = rewritten.match(/<head\b[^>]*>/i);
+  if (head) rewritten = rewritten.replace(head[0], `${head[0]}${storageShim}`);
+  else rewritten = `${storageShim}${rewritten}`;
+  return rewritten;
 }
 
 async function serveBrowse(url, res) {
