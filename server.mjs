@@ -205,8 +205,12 @@ function cookieValue(header = '', name) {
   }
   return '';
 }
+function sessionId(request) {
+  const auth = String(request.headers.authorization || '');
+  return auth.startsWith('Bearer ') ? auth.slice(7).trim() : cookieValue(request.headers.cookie, 'nomad_sid');
+}
 function currentUser(request) {
-  const sid = cookieValue(request.headers.cookie, 'nomad_sid');
+  const sid = sessionId(request);
   const session = sid && sessions.get(sid);
   if (!session || session.exp < Date.now()) { if (sid) sessions.delete(sid); return null; }
   return session.username;
@@ -216,6 +220,7 @@ function startSession(request, reply, username) {
   sessions.set(sid, { username, exp: Date.now() + SESSION_MS });
   const secure = request.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
   reply.header('set-cookie', `nomad_sid=${sid}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${SESSION_MS / 1000}${secure}`);
+  return sid;
 }
 const attempts = new Map();
 function tooMany(request) {
@@ -230,6 +235,14 @@ function readCredentials(request) {
   const body = request.body && typeof request.body === 'object' ? request.body : {};
   return { username: String(body.username || '').trim().toLowerCase(), password: String(body.password || '') };
 }
+// Let Nomad pages hosted on any link (or opened from a file) talk to the account API. Logins use a token header, not cookies.
+fastify.addHook('onRequest', (request, reply, done) => {
+  if ((request.raw.url || '').startsWith('/api/')) {
+    reply.header('access-control-allow-origin', '*').header('access-control-allow-headers', 'content-type, authorization').header('access-control-allow-methods', 'GET, POST, OPTIONS').header('access-control-max-age', '86400');
+    if (request.method === 'OPTIONS') { reply.code(204).send(); return; }
+  }
+  done();
+});
 fastify.post('/api/register', async (request, reply) => {
   if (tooMany(request)) return reply.code(429).send({ error: 'Too many tries. Wait a few minutes.' });
   const { username, password } = readCredentials(request);
@@ -240,8 +253,8 @@ fastify.post('/api/register', async (request, reply) => {
   const salt = randomBytes(16);
   users[username] = { salt: salt.toString('hex'), hash: (await hashPassword(password, salt)).toString('hex'), created: Date.now() };
   saveUsers();
-  startSession(request, reply, username);
-  return reply.header('cache-control', 'no-store').send({ username });
+  const token = startSession(request, reply, username);
+  return reply.header('cache-control', 'no-store').send({ username, token });
 });
 fastify.post('/api/login', async (request, reply) => {
   if (tooMany(request)) return reply.code(429).send({ error: 'Too many tries. Wait a few minutes.' });
@@ -251,11 +264,11 @@ fastify.post('/api/login', async (request, reply) => {
   const attempt = await hashPassword(password, salt);
   const ok = user && timingSafeEqual(attempt, Buffer.from(user.hash, 'hex'));
   if (!ok) return reply.code(401).send({ error: 'Wrong username or password.' });
-  startSession(request, reply, username);
-  return reply.header('cache-control', 'no-store').send({ username });
+  const token = startSession(request, reply, username);
+  return reply.header('cache-control', 'no-store').send({ username, token });
 });
 fastify.post('/api/logout', async (request, reply) => {
-  const sid = cookieValue(request.headers.cookie, 'nomad_sid');
+  const sid = sessionId(request);
   if (sid) sessions.delete(sid);
   reply.header('set-cookie', 'nomad_sid=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0');
   return reply.send({ ok: true });
@@ -264,6 +277,32 @@ fastify.get('/api/me', async (request, reply) => {
   const username = currentUser(request);
   if (!username) return reply.code(401).header('cache-control', 'no-store').send({ error: 'Not logged in.' });
   return reply.header('cache-control', 'no-store').send({ username });
+});
+// ---------- Log in with Google ----------
+// Paste your Google OAuth Client ID between the quotes (or set the GOOGLE_CLIENT_ID environment variable on Render). It is public, not a secret.
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
+fastify.get('/api/config', async (_request, reply) => reply.header('cache-control', 'no-store').send({ googleClientId: GOOGLE_CLIENT_ID }));
+fastify.post('/api/google', async (request, reply) => {
+  if (!GOOGLE_CLIENT_ID) return reply.code(503).send({ error: 'Google login is not set up yet.' });
+  if (tooMany(request)) return reply.code(429).send({ error: 'Too many tries. Wait a few minutes.' });
+  const credential = String((request.body && request.body.credential) || '');
+  if (!credential || credential.length > 6000) return reply.code(400).send({ error: 'Missing Google login.' });
+  try {
+    // Google checks the signature for us; we then check the token was made for OUR app and is still valid.
+    const check = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(credential)}`);
+    if (!check.ok) return reply.code(401).send({ error: 'Google could not verify that login.' });
+    const info = await check.json();
+    const issuerOk = info.iss === 'accounts.google.com' || info.iss === 'https://accounts.google.com';
+    const verified = info.email_verified === true || info.email_verified === 'true';
+    if (info.aud !== GOOGLE_CLIENT_ID || !issuerOk || !verified || Number(info.exp) * 1000 < Date.now()) {
+      return reply.code(401).send({ error: 'That Google login is not valid for this site.' });
+    }
+    const display = String(info.name || String(info.email || '').split('@')[0] || 'Google user').slice(0, 40);
+    const token = startSession(request, reply, display);
+    return reply.header('cache-control', 'no-store').send({ username: display, token });
+  } catch {
+    return reply.code(502).send({ error: 'Could not reach Google. Try again.' });
+  }
 });
 // Keep server code and config files from being downloaded through the static file handler.
 fastify.addHook('onRequest', (request, reply, done) => {
