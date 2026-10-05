@@ -1,6 +1,10 @@
 import { createServer } from 'node:http';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import { Readable } from 'node:stream';
+import { randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
 import { server as wisp, logging } from '@mercuryworkshop/wisp-js/server';
@@ -118,6 +122,29 @@ fastify.get('/desktop', sendDesktop);
 fastify.get('/search', async (_request, reply) => reply.type('text/html; charset=utf-8').sendFile('index.html'));
 // Same page, served without COEP so the desktop (which is not isolated) can embed it in an iframe.
 fastify.get('/search-embed', async (_request, reply) => reply.type('text/html; charset=utf-8').sendFile('index.html'));
+
+// Live wallpaper videos: fetched by the server (no browser Referer) so motionbgs.com can't block them. Only motionbgs .mp4 links are allowed.
+fastify.get('/wp-video', async (request, reply) => {
+  let url;
+  try { url = new URL(String(request.query.u || '')); } catch { return reply.code(400).send('Bad link'); }
+  if (url.protocol !== 'https:' || !/^(www\.)?motionbgs\.com$/i.test(url.hostname) || !/\.mp4$/i.test(url.pathname)) {
+    return reply.code(403).send('Not allowed');
+  }
+  const headers = { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36' };
+  if (request.headers.range) headers.range = request.headers.range;
+  try {
+    const upstream = await fetch(url, { headers, redirect: 'follow' });
+    if (!upstream.ok && upstream.status !== 206) return reply.code(502).send('Video unavailable');
+    reply.code(upstream.status).header('content-type', upstream.headers.get('content-type') || 'video/mp4').header('cache-control', 'public, max-age=86400').header('accept-ranges', 'bytes');
+    for (const h of ['content-length', 'content-range']) {
+      const v = upstream.headers.get(h);
+      if (v) reply.header(h, v);
+    }
+    return reply.send(Readable.fromWeb(upstream.body));
+  } catch {
+    return reply.code(502).send('Video unavailable');
+  }
+});
 fastify.get('/api/search', async (request, reply) => {
   const query = String(request.query.q || '').trim();
   if (!query) return reply.code(400).send({ error: 'Enter a search query.' });
@@ -157,6 +184,92 @@ fastify.get('/api/search', async (request, reply) => {
     }
   }
   return reply.code(502).send({ error: 'Search providers could not be reached. Try again in a moment.' });
+});
+
+
+// ---------- Nomad accounts (username + password) ----------
+// Stored OUTSIDE the public folder. On free Render the disk resets on redeploy/restart, so accounts can be lost; set DATA_DIR to a persistent disk to keep them.
+const dataDir = process.env.DATA_DIR || path.join(os.tmpdir(), 'nomad-data');
+fs.mkdirSync(dataDir, { recursive: true });
+const usersFile = path.join(dataDir, 'users.json');
+let users = {};
+try { users = JSON.parse(fs.readFileSync(usersFile, 'utf8')); } catch { /* first run */ }
+const saveUsers = () => { const tmp = usersFile + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(users)); fs.renameSync(tmp, usersFile); };
+const hashPassword = (password, salt) => new Promise((resolve, reject) => scryptCb(password, salt, 64, (err, key) => err ? reject(err) : resolve(key)));
+const sessions = new Map();
+const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
+function cookieValue(header = '', name) {
+  for (const part of header.split(';')) {
+    const [k, ...v] = part.trim().split('=');
+    if (k === name) return v.join('=');
+  }
+  return '';
+}
+function currentUser(request) {
+  const sid = cookieValue(request.headers.cookie, 'nomad_sid');
+  const session = sid && sessions.get(sid);
+  if (!session || session.exp < Date.now()) { if (sid) sessions.delete(sid); return null; }
+  return session.username;
+}
+function startSession(request, reply, username) {
+  const sid = randomBytes(32).toString('hex');
+  sessions.set(sid, { username, exp: Date.now() + SESSION_MS });
+  const secure = request.headers['x-forwarded-proto'] === 'https' ? '; Secure' : '';
+  reply.header('set-cookie', `nomad_sid=${sid}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${SESSION_MS / 1000}${secure}`);
+}
+const attempts = new Map();
+function tooMany(request) {
+  const ip = String(request.headers['x-forwarded-for'] || request.ip).split(',')[0].trim();
+  const now = Date.now();
+  const recent = (attempts.get(ip) || []).filter(t => now - t < 10 * 60 * 1000);
+  recent.push(now);
+  attempts.set(ip, recent);
+  return recent.length > 20;
+}
+function readCredentials(request) {
+  const body = request.body && typeof request.body === 'object' ? request.body : {};
+  return { username: String(body.username || '').trim().toLowerCase(), password: String(body.password || '') };
+}
+fastify.post('/api/register', async (request, reply) => {
+  if (tooMany(request)) return reply.code(429).send({ error: 'Too many tries. Wait a few minutes.' });
+  const { username, password } = readCredentials(request);
+  if (!/^[a-z0-9_]{3,20}$/.test(username)) return reply.code(400).send({ error: 'Username: 3-20 letters, numbers or _' });
+  if (password.length < 6 || password.length > 100) return reply.code(400).send({ error: 'Password must be 6-100 characters.' });
+  if (Object.keys(users).length >= 1000) return reply.code(503).send({ error: 'Sign-ups are full.' });
+  if (Object.prototype.hasOwnProperty.call(users, username)) return reply.code(409).send({ error: 'That username is taken.' });
+  const salt = randomBytes(16);
+  users[username] = { salt: salt.toString('hex'), hash: (await hashPassword(password, salt)).toString('hex'), created: Date.now() };
+  saveUsers();
+  startSession(request, reply, username);
+  return reply.header('cache-control', 'no-store').send({ username });
+});
+fastify.post('/api/login', async (request, reply) => {
+  if (tooMany(request)) return reply.code(429).send({ error: 'Too many tries. Wait a few minutes.' });
+  const { username, password } = readCredentials(request);
+  const user = Object.prototype.hasOwnProperty.call(users, username) ? users[username] : null;
+  const salt = user ? Buffer.from(user.salt, 'hex') : randomBytes(16);
+  const attempt = await hashPassword(password, salt);
+  const ok = user && timingSafeEqual(attempt, Buffer.from(user.hash, 'hex'));
+  if (!ok) return reply.code(401).send({ error: 'Wrong username or password.' });
+  startSession(request, reply, username);
+  return reply.header('cache-control', 'no-store').send({ username });
+});
+fastify.post('/api/logout', async (request, reply) => {
+  const sid = cookieValue(request.headers.cookie, 'nomad_sid');
+  if (sid) sessions.delete(sid);
+  reply.header('set-cookie', 'nomad_sid=; HttpOnly; Path=/; SameSite=Lax; Max-Age=0');
+  return reply.send({ ok: true });
+});
+fastify.get('/api/me', async (request, reply) => {
+  const username = currentUser(request);
+  if (!username) return reply.code(401).header('cache-control', 'no-store').send({ error: 'Not logged in.' });
+  return reply.header('cache-control', 'no-store').send({ username });
+});
+// Keep server code and config files from being downloaded through the static file handler.
+fastify.addHook('onRequest', (request, reply, done) => {
+  const pathname = decodeURIComponent((request.raw.url || '/').split('?')[0]);
+  if (/^\/(server\.mjs|package(-lock)?\.json|node_modules|\.)/i.test(pathname)) { reply.code(404).send('Not found'); return; }
+  done();
 });
 
 fastify.register(fastifyStatic, { root: here, decorateReply: true });
