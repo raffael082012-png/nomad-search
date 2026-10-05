@@ -24,9 +24,25 @@ const scramjet = new ScramjetController({
     sync: '/scram/scramjet.sync.js'
   }
 });
-scramjet.init();
+const scramjetReady = (async () => { try { await scramjet.init(); } catch (error) { console.error('Scramjet init failed', error); } })();
 
 let proxyFrame;
+
+// Does this address look like a sign-in / sign-up page or a service that needs an account?
+const LOGIN_HOSTS = /(^|\.)(google|gmail|youtube|spotify|facebook|instagram|twitter|x|tiktok|discord|github|microsoft|live|office|apple|icloud|amazon|netflix|reddit|snapchat|paypal|linkedin|twitch|roblox|epicgames)\.com$/i;
+const LOGIN_PATH = /(log-?in|sign-?in|sign-?up|register|account|oauth)/i;
+function needsLogin(url) {
+  return LOGIN_HOSTS.test(url.hostname) || /^(accounts|login|auth|id|sso)\./i.test(url.hostname) || LOGIN_PATH.test(url.pathname);
+}
+
+// Turn what someone typed into a site address, or return null if it looks like a search instead.
+function normalizeTarget(text) {
+  const value = String(text || '').trim();
+  if (!value) return null;
+  if (/^https?:\/\/\S+$/i.test(value)) return value;
+  if (/^[^\s/]+\.[a-z]{2,}([/:?#]\S*)?$/i.test(value)) return `https://${value}`;
+  return null;
+}
 let particleFrame = 0;
 let particleWidth = 0;
 let particleHeight = 0;
@@ -113,6 +129,12 @@ form.addEventListener('submit', event => {
   event.preventDefault();
   const query = input.value.trim();
   if (!query) return;
+  const direct = normalizeTarget(query);
+  if (direct) {
+    history.replaceState({}, '', `${location.pathname}${location.search}#view=${encodeURIComponent(direct)}`);
+    showViewer(direct);
+    return;
+  }
   const next = new URL(location.href);
   next.searchParams.set('q', query);
   next.hash = '';
@@ -125,7 +147,10 @@ async function showViewer(raw) {
   try { target = new URL(raw); } catch { return; }
   if (!['http:', 'https:'].includes(target.protocol)) return;
 
-  viewerUrl.textContent = target.href;
+  viewerUrl.value = target.href;
+  if (window.parent !== window && needsLogin(target)) {
+    try { window.parent.postMessage({ nomadNeedsLogin: target.href }, '*'); } catch { /* ignore */ }
+  }
   original.href = target.href;
   searchUi.hidden = true;
   particleCanvas.hidden = true;
@@ -136,6 +161,7 @@ async function showViewer(raw) {
 
   try {
     await registerSW();
+    await scramjetReady;
     const wispUrl = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/wisp/`;
     if ((await connection.getTransport()) !== '/libcurl/index.mjs') {
       await connection.setTransport('/libcurl/index.mjs', [{ websocket: wispUrl }]);
@@ -152,6 +178,15 @@ async function showViewer(raw) {
     searchUi.hidden = false;
   }
 }
+
+viewerUrl.addEventListener('keydown', event => {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  const target = normalizeTarget(viewerUrl.value);
+  if (!target) return;
+  history.replaceState({}, '', `${location.pathname}${location.search}#view=${encodeURIComponent(target)}`);
+  showViewer(target);
+});
 
 document.querySelector('#back-results').addEventListener('click', () => {
   proxyFrame?.frame.remove();

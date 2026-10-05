@@ -51,7 +51,7 @@ label.btn,.btn{display:inline-block;background:var(--accent);color:#fff;border:0
 #gamePlayer:-webkit-full-screen{width:100vw!important;height:100vh!important;border:0!important;border-radius:0!important;background:#000}
 #music{width:min(920px,96vw);background:linear-gradient(145deg,rgba(15,21,35,.97),rgba(7,11,20,.96));border-color:rgba(116,217,255,.28);box-shadow:0 24px 80px rgba(0,0,0,.6),0 0 32px rgba(68,185,255,.12)}
 #music .bar{background:linear-gradient(90deg,rgba(38,74,105,.34),rgba(20,26,44,.18));color:#f0f7ff}
-#music.locked .music-layout{display:none}#music:not(.locked) #acctGate{display:none}
+
 .music-layout{display:grid;grid-template-columns:230px minmax(0,1fr);gap:18px;align-items:start}
 .music-side{display:grid;gap:9px}
 .music-pick{width:100%;text-align:left;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.09);border-radius:12px;color:var(--text);padding:12px 13px;cursor:pointer;font:inherit;transition:.2s}
@@ -101,22 +101,20 @@ label.btn,.btn{display:inline-block;background:var(--accent);color:#fff;border:0
   </div>
 
   <div class="win" id="nomadsearch" style="top:30px;left:calc(50% - min(500px,48vw))">
-    <div class="bar"><span>Nomad Search</span><div class="bar-tools"><a href="/search" target="_blank" rel="noopener" style="color:#8bc5ff;font-size:12px;text-decoration:none">Open in new tab ↗</a><button type="button" id="searchReload" title="Reload" style="background:none;width:auto;height:auto;border-radius:6px;color:#cfe3ff;font-size:15px;line-height:1;padding:0 4px">↻</button><button data-close title="Close"></button></div></div>
+    <div class="bar"><span>Nomad Search</span><div class="bar-tools"><a href="/search" target="_blank" rel="noopener" style="color:#8bc5ff;font-size:12px;text-decoration:none">Open in new tab ↗</a><a href="#" id="nsAcct" style="color:#cfe3ff;font-size:12px;text-decoration:none;white-space:nowrap">Log in</a><button type="button" id="searchReload" title="Reload" style="background:none;width:auto;height:auto;border-radius:6px;color:#cfe3ff;font-size:15px;line-height:1;padding:0 4px">↻</button><button data-close title="Close"></button></div></div>
     <div class="body"><div id="nsStatus" style="position:absolute;inset:0;z-index:2;display:grid;place-items:center;text-align:center;background:#060912;color:#9fb0cc;font:14px system-ui;padding:20px"><div><div id="nsMsg">Loading Nomad Search…</div><div style="margin-top:12px"><a id="nsOpen" href="/search" target="_blank" rel="noopener" style="color:#8bc5ff">Open in new tab ↗</a> &nbsp; <a href="#" id="nsRetry" style="color:#8bc5ff">Retry</a></div></div></div><iframe id="searchFrame" title="Nomad Search" data-src="/search-embed" allow="fullscreen; clipboard-write; autoplay; encrypted-media; storage-access" referrerpolicy="origin"></iframe></div>
   </div>
 
   <div class="win" id="music" style="top:44px;left:calc(50% - min(460px,48vw))">
     <div class="bar"><span>Music</span><button data-close></button></div>
     <div class="body">
-      <div id="acctGate" style="max-width:340px;margin:6px auto 20px">
-        <div style="display:flex;gap:6px;margin-bottom:10px"><button class="btn" id="acctTabLogin" type="button">Log in</button><button class="btn" id="acctTabSignup" type="button" style="background:#444">Sign up</button></div>
-        <input id="acctUser" type="text" placeholder="Username" autocomplete="username" maxlength="20" spellcheck="false" style="width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:inherit;padding:10px;font-size:14px;margin-bottom:8px">
-        <input id="acctPass" type="password" placeholder="Password (6+ characters)" autocomplete="current-password" maxlength="100" style="width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:inherit;padding:10px;font-size:14px">
-        <button class="btn" id="acctGo" type="button" style="width:100%;margin:10px 0 0;padding:10px">Log in</button>
-        <div id="acctMsg" aria-live="polite" style="color:#ffb4b4;font-size:12px;margin-top:8px;min-height:14px"></div>
-        <div style="color:var(--muted);font-size:11px;margin-top:6px">Make an account to listen. Don't use a password you use anywhere else.</div>
-      </div>
+      <div id="acctOut" style="margin:0 0 12px;color:var(--muted);font-size:12px">Not logged in · <a href="#" id="acctOpen" style="color:#8bc5ff">Log in</a></div>
       <div id="acctBar" style="display:none;margin:0 0 12px;color:var(--muted);font-size:12px">Logged in as <b id="acctName" style="color:var(--text)"></b> · <a href="#" id="acctLogout" style="color:#8bc5ff">Log out</a></div>
+      <div id="spProfile" style="display:none;margin:0 0 14px;padding:12px;border:1px solid rgba(255,255,255,.12);border-radius:12px;background:rgba(255,255,255,.04);font-size:13px">
+        <div style="display:flex;align-items:center;gap:10px"><img id="spAvatar" alt="" style="width:48px;height:48px;border-radius:50%;object-fit:cover;background:#222;display:none"><div><div style="color:#1db954;font-size:11px;font-weight:700">SPOTIFY</div><div id="spName" style="font-weight:650;font-size:15px"></div><div id="spMeta" style="color:var(--muted);font-size:12px"></div></div></div>
+        <div style="margin-top:10px;color:var(--muted);font-size:12px">Your top tracks</div>
+        <ol id="spTracks" style="margin:6px 0 0 18px;padding:0;line-height:1.6"></ol>
+      </div>
       <div class="music-layout">
         <nav class="music-side" aria-label="Music playlists and tracks">
           <button class="music-pick active" type="button" data-soundcloud="https://soundcloud.com/lotjtnyu/cult-member-u-werent-here-i-1" data-title="U Weren’t Here I Really Miss You"><strong>U Weren’t Here I Really Miss You</strong><span>Cult Member, Mia Martina • full track</span></button>
@@ -182,7 +180,7 @@ $$('[data-close]').forEach(b=>b.addEventListener('click',e=>e.target.closest('.w
 $('#start').addEventListener('click',()=>$('#menu').classList.toggle('open'));
 $$('.win').forEach(w=>{const bar=w.querySelector('.bar');let ox,oy,d=false;
  w.addEventListener('pointerdown',()=>w.style.zIndex=++z);
- bar.addEventListener('pointerdown',e=>{if(e.target.tagName==='BUTTON')return;d=true;ox=e.clientX-w.offsetLeft;oy=e.clientY-w.offsetTop;bar.setPointerCapture(e.pointerId)});
+ bar.addEventListener('pointerdown',e=>{if(e.target.closest('button,a'))return;d=true;ox=e.clientX-w.offsetLeft;oy=e.clientY-w.offsetTop;bar.setPointerCapture(e.pointerId)});
  bar.addEventListener('pointermove',e=>{if(!d)return;w.style.left=Math.max(0,e.clientX-ox)+'px';w.style.top=Math.max(0,e.clientY-oy)+'px'});
  bar.addEventListener('pointerup',()=>d=false)});
 function tick(){const n=new Date();$('#clock').innerHTML=n.toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})+'<br>'+n.toLocaleDateString([],{month:'short',day:'numeric'})}
@@ -257,14 +255,14 @@ function nsLoad(){const f=document.getElementById('searchFrame'),st=document.get
 document.getElementById('nsRetry').addEventListener('click',e=>{e.preventDefault();const f=document.getElementById('searchFrame');f.src='about:blank';setTimeout(nsLoad,50)});
 </script>
 <script>(function(){const w=document.getElementById('nomadsearch');if(!w)return;const bar=w.querySelector('.bar');
-bar.addEventListener('pointerdown',e=>{if(e.target.tagName!=='BUTTON')w.classList.add('dragging')});
+bar.addEventListener('pointerdown',e=>{if(!e.target.closest('button,a'))w.classList.add('dragging')});
 addEventListener('pointerup',()=>w.classList.remove('dragging','sizing'));
 document.getElementById('searchReload').addEventListener('click',e=>{e.stopPropagation();const f=document.getElementById('searchFrame');f.src='about:blank';setTimeout(nsLoad,50)});
 w.addEventListener('pointerdown',e=>{const r=w.getBoundingClientRect();if(e.clientX>r.right-22&&e.clientY>r.bottom-22)w.classList.add('sizing')});
 })();</script>
 
 <script>(function(){const w=document.getElementById('movie');if(!w)return;const bar=w.querySelector('.bar');
-bar.addEventListener('pointerdown',e=>{if(e.target.tagName!=='BUTTON')w.classList.add('dragging')});
+bar.addEventListener('pointerdown',e=>{if(!e.target.closest('button,a'))w.classList.add('dragging')});
 addEventListener('pointerup',()=>w.classList.remove('dragging','sizing'));
 function movieFs(){const f=document.getElementById('movieFrame');if(document.fullscreenElement){document.exitFullscreen&&document.exitFullscreen();return}const rq=f.requestFullscreen||f.webkitRequestFullscreen;if(rq){try{const r=rq.call(f);if(r&&r.catch)r.catch(()=>{})}catch(e){}}}
 const fb=document.getElementById('movieFs');if(fb)fb.addEventListener('click',e=>{e.stopPropagation();movieFs()});
@@ -272,33 +270,174 @@ addEventListener('message',e=>{const f=document.getElementById('movieFrame');if(
 const rb=document.getElementById('movieReload');if(rb)rb.addEventListener('click',e=>{e.stopPropagation();const f=document.getElementById('movieFrame');f.src='about:blank';setTimeout(()=>loadEmbedFrame(f),50)});
 w.addEventListener('pointerdown',e=>{const r=w.getBoundingClientRect();if(e.clientX>r.right-22&&e.clientY>r.bottom-22)w.classList.add('sizing')});
 })();</script>
+<div id="authModal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.62);backdrop-filter:blur(4px);align-items:center;justify-content:center;padding:16px">
+  <div role="dialog" aria-modal="true" aria-label="Log in to Nomad" style="position:relative;width:min(400px,100%);max-height:92vh;overflow:auto;background:rgba(20,18,32,.98);border:1px solid rgba(255,255,255,.14);border-radius:16px;padding:20px 18px;color:var(--text,#fff)">
+    <button type="button" id="authClose" aria-label="Close" style="position:absolute;top:8px;right:10px;background:none;border:0;color:var(--muted,#aaa);font-size:22px;cursor:pointer;line-height:1">&times;</button>
+    <div style="font-size:17px;font-weight:700;text-align:center">Log in to Nomad</div>
+    <div id="authSub" style="color:var(--muted,#aaa);font-size:12px;text-align:center;margin:4px 0 14px">One login works in Music and Nomad Search.</div>
+      <div id="acctGate" style="max-width:340px;margin:6px auto 20px">
+        <div style="display:flex;gap:6px;margin-bottom:10px"><button class="btn" id="acctTabLogin" type="button">Log in</button><button class="btn" id="acctTabSignup" type="button" style="background:#444">Sign up</button></div>
+        <input id="acctUser" type="text" placeholder="Username" autocomplete="username" maxlength="20" spellcheck="false" style="width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:inherit;padding:10px;font-size:14px;margin-bottom:8px">
+        <input id="acctPass" type="password" placeholder="Password (6+ characters)" autocomplete="current-password" maxlength="100" style="width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:inherit;padding:10px;font-size:14px">
+        <button class="btn" id="acctGo" type="button" style="width:100%;margin:10px 0 0;padding:10px">Log in</button>
+        <div id="acctMsg" aria-live="polite" style="color:#ffb4b4;font-size:12px;margin-top:8px;min-height:14px"></div>
+        <div id="googleWrap" style="margin-top:12px"><div id="googleBtn" style="display:flex;justify-content:center;min-height:44px"></div><div id="gMsg" aria-live="polite" style="color:#ffb4b4;font-size:12px;margin-top:6px;min-height:14px;text-align:center"></div></div>
+        <div style="display:flex;align-items:center;gap:8px;margin:12px 0;color:var(--muted);font-size:11px"><span style="flex:1;height:1px;background:rgba(255,255,255,.14)"></span>or<span style="flex:1;height:1px;background:rgba(255,255,255,.14)"></span></div>
+        <input id="spClient" type="text" autocomplete="off" spellcheck="false" placeholder="Spotify Client ID" style="width:100%;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.14);border-radius:8px;color:inherit;padding:10px;font-size:13px;margin-bottom:8px">
+        <button class="btn" id="spLogin" type="button" style="width:100%;padding:10px;background:#1db954;color:#06210f;font-weight:700">Log in with Spotify</button>
+        <div id="spMsg" aria-live="polite" style="color:#ffb4b4;font-size:12px;margin-top:6px;min-height:14px"></div>
+        <div id="spHint" style="color:var(--muted);font-size:11px;line-height:1.5">Register this exact Redirect URI in your Spotify app: <code id="spRedir" style="user-select:all"></code></div>
+        <div style="color:var(--muted);font-size:11px;margin-top:6px">Make an account to listen. Don't use a password you use anywhere else.</div>
+      </div>
+  </div>
+</div>
 <script>
-/* Nomad accounts: sign up / log in, then the Music player unlocks */
+/* Nomad accounts: optional login that pops up when something needs it */
 (function(){
 const $a=id=>document.getElementById(id),win=$a('music'),player=$a('musicPlayer');
-const startSrc=player.getAttribute('src')||'';player.setAttribute('src','about:blank');
+const API=(location.protocol==='file:'||['localhost','127.0.0.1','nomad-en95.onrender.com'].indexOf(location.hostname)<0)?'https://nomad-en95.onrender.com':'';
+const tk={get(){try{return localStorage.getItem('nomad_token')||''}catch(e){return ''}},set(v){try{v?localStorage.setItem('nomad_token',v):localStorage.removeItem('nomad_token')}catch(e){}}};
 let mode='login';
 function setMode(m){mode=m;$a('acctGo').textContent=m==='login'?'Log in':'Create account';$a('acctPass').autocomplete=m==='login'?'current-password':'new-password';$a('acctTabLogin').style.background=m==='login'?'':'#444';$a('acctTabSignup').style.background=m==='signup'?'':'#444';$a('acctMsg').textContent=''}
-function lock(on,name){win.classList.toggle('locked',on);$a('acctBar').style.display=on?'none':'block';if(name)$a('acctName').textContent=name;
-  if(on){player.setAttribute('src','about:blank')}else if(player.getAttribute('src')==='about:blank'){player.setAttribute('src',startSrc)}}
+const modal=$a('authModal');
+const DEFAULT_SUB='One login works in Music and Nomad Search.';
+function showAuth(reason){if(window.nomadAuthed)return;$a('authSub').textContent=(typeof reason==='string'&&reason)||DEFAULT_SUB;modal.style.display='flex';setTimeout(()=>{const u=$a('acctUser');if(u)u.focus()},60)}
+function hideAuth(){modal.style.display='none'}
+window.nomadShowAuth=showAuth;
+function setAuth(loggedIn,name){window.nomadAuthed=loggedIn;$a('acctBar').style.display=loggedIn?'block':'none';$a('acctOut').style.display=loggedIn?'none':'block';
+  if(name)$a('acctName').textContent=name;
+  const ns=$a('nsAcct');if(ns)ns.textContent=loggedIn?('\uD83D\uDC64 '+(name||'Account')+' \u00B7 Log out'):'Log in';
+  if(loggedIn)hideAuth()}
 async function call(path,body){
-  const r=await fetch(path,{method:body?'POST':'GET',headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined,credentials:'same-origin'});
+  const headers={};if(tk.get())headers.Authorization='Bearer '+tk.get();if(body)headers['Content-Type']='application/json';
+  const r=await fetch(API+path,{method:body?'POST':'GET',headers:headers,body:body?JSON.stringify(body):undefined});
   let j={};try{j=await r.json()}catch(e){}
-  if(!r.ok)throw new Error(j.error||('Error '+r.status));return j}
+  if(!r.ok){const err=new Error(j.error||('Error '+r.status));err.status=r.status;throw err}return j}
 async function go(){
   const u=$a('acctUser').value.trim(),p=$a('acctPass').value;
   if(!u||!p){$a('acctMsg').textContent='Enter a username and password.';return}
   $a('acctGo').disabled=true;$a('acctMsg').textContent='';
-  try{const j=await call(mode==='login'?'/api/login':'/api/register',{username:u,password:p});$a('acctPass').value='';lock(false,j.username)}
-  catch(e){$a('acctMsg').textContent=(e instanceof TypeError)?'Cannot reach the server. Open Nomad from your Render link.':e.message}
+  try{const j=await call(mode==='login'?'/api/login':'/api/register',{username:u,password:p});$a('acctPass').value='';tk.set(j.token);setAuth(true,j.username)}
+  catch(e){$a('acctMsg').textContent=(e instanceof TypeError)?'Cannot reach the server. It may be waking up, try again in a minute.':(e.status===404||e.status===405)?'This server does not have accounts yet. Upload the new server.mjs to GitHub and wait for Render to redeploy.':(e.status>=500)?'Server error ('+e.status+'). Check the Render logs.':e.message}
   $a('acctGo').disabled=false}
 $a('acctTabLogin').addEventListener('click',()=>setMode('login'));
 $a('acctTabSignup').addEventListener('click',()=>setMode('signup'));
 $a('acctGo').addEventListener('click',go);
 ['acctUser','acctPass'].forEach(id=>$a(id).addEventListener('keydown',e=>{if(e.key==='Enter')go()}));
-$a('acctLogout').addEventListener('click',async e=>{e.preventDefault();try{await call('/api/logout',{})}catch(x){}lock(true)});
-lock(true);
-call('/api/me').then(j=>lock(false,j.username)).catch(()=>{});
+$a('acctLogout').addEventListener('click',e=>{e.preventDefault();call('/api/logout',{}).catch(()=>{});tk.set('');setAuth(false)});
+setAuth(false);
+window.nomadUnlock=function(n){setAuth(true,n)};
+$a('authClose').addEventListener('click',hideAuth);
+modal.addEventListener('click',e=>{if(e.target===modal)hideAuth()});
+document.addEventListener('keydown',e=>{if(e.key==='Escape')hideAuth()});
+$a('acctOpen').addEventListener('click',e=>{e.preventDefault();showAuth()});
+const ns=$a('nsAcct');if(ns)ns.addEventListener('click',e=>{e.preventDefault();if(window.nomadAuthed){call('/api/logout',{}).catch(()=>{});tk.set('');setAuth(false)}else showAuth()});
+addEventListener('message',e=>{const sf=document.getElementById('searchFrame');if(e.data&&e.data.nomadNeedsLogin&&sf&&e.source===sf.contentWindow&&!window.nomadAuthed)showAuth('That site asks you to sign in or sign up. Log in to Nomad here. One login works in Music and Nomad Search.')});
+call('/api/me').then(j=>setAuth(true,j.username)).catch(()=>{});
+})();
+</script>
+<script>
+/* Log in with Spotify: Authorization Code + PKCE (official flow, no secret needed) */
+(function(){
+/* PUT YOUR SPOTIFY CLIENT ID BETWEEN THE QUOTES (it is public, safe to put here). When set, the Client ID box disappears. */
+const SP_CLIENT_ID='';
+const SCOPES='user-read-email user-top-read';
+const $s=id=>document.getElementById(id);
+const LS={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}},del(k){try{localStorage.removeItem(k)}catch(e){}}};
+const redirectUri=()=>location.origin+location.pathname;
+const msg=t=>{$s('spMsg').textContent=t||''};
+function rand(n){const c='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~';const a=new Uint8Array(n);crypto.getRandomValues(a);return Array.from(a,x=>c[x%c.length]).join('')}
+async function challenge(v){const d=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(v));return btoa(String.fromCharCode(...new Uint8Array(d))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
+async function login(){
+  const id=SP_CLIENT_ID||$s('spClient').value.trim();
+  if(!id){msg('Paste your Spotify Client ID first.');return}
+  if(!window.crypto||!crypto.subtle){msg('Open Nomad from your https link to use Spotify login.');return}
+  LS.set('sp_client',id);
+  const verifier=rand(64),state=rand(16);
+  LS.set('sp_verifier',verifier);LS.set('sp_state',state);
+  const q=new URLSearchParams({response_type:'code',client_id:id,scope:SCOPES,redirect_uri:redirectUri(),state:state,code_challenge_method:'S256',code_challenge:await challenge(verifier)});
+  location.href='https://accounts.spotify.com/authorize?'+q;
+}
+async function tokenCall(body){
+  const r=await fetch('https://accounts.spotify.com/api/token',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams(body)});
+  const j=await r.json();if(!r.ok)throw new Error(j.error_description||j.error||'Token error');
+  LS.set('sp_token',j.access_token);LS.set('sp_exp',String(Date.now()+(j.expires_in-60)*1000));if(j.refresh_token)LS.set('sp_refresh',j.refresh_token);
+}
+async function token(){
+  if(LS.get('sp_token')&&Date.now()<Number(LS.get('sp_exp')||0))return LS.get('sp_token');
+  const rt=LS.get('sp_refresh'),id=LS.get('sp_client');
+  if(rt&&id){await tokenCall({grant_type:'refresh_token',refresh_token:rt,client_id:id});return LS.get('sp_token')}
+  return null;
+}
+function clearSpotify(){['sp_token','sp_exp','sp_refresh','sp_verifier','sp_state'].forEach(LS.del);$s('spProfile').style.display='none'}
+async function api(path,t){const r=await fetch('https://api.spotify.com'+path,{headers:{Authorization:'Bearer '+t}});if(r.status===401){clearSpotify();throw new Error('Session expired, log in again.')}if(!r.ok)throw new Error('Spotify said '+r.status);return r.json()}
+async function showProfile(){
+  const t=await token();if(!t)return;
+  try{
+    const me=await api('/v1/me',t);
+    const name=me.display_name||me.id||'Spotify user';
+    $s('spName').textContent=name;
+    $s('spMeta').textContent=[me.email,me.product&&('plan: '+me.product),me.country].filter(Boolean).join(' • ');
+    const img=me.images&&me.images[0]&&me.images[0].url,av=$s('spAvatar');if(img){av.src=img;av.style.display='block'}else av.style.display='none';
+    $s('spProfile').style.display='block';
+    if(window.nomadUnlock)window.nomadUnlock(name);
+  }catch(e){msg(e.message);return}
+  const ol=$s('spTracks');ol.textContent='';
+  try{
+    const top=await api('/v1/me/top/tracks?limit=5&time_range=short_term',t);
+    if(!top.items.length){const li=document.createElement('li');li.textContent='No listening history yet.';ol.appendChild(li)}
+    top.items.forEach(x=>{const li=document.createElement('li');li.textContent=x.name+' — '+x.artists.map(a=>a.name).join(', ');ol.appendChild(li)});
+  }catch(e){const li=document.createElement('li');li.textContent='Could not load top tracks ('+e.message+').';ol.appendChild(li)}
+}
+async function boot(){
+  $s('spRedir').textContent=redirectUri();
+  $s('spClient').value=SP_CLIENT_ID||LS.get('sp_client')||'';
+  if(SP_CLIENT_ID){$s('spClient').style.display='none';$s('spHint').style.display='none';LS.set('sp_client',SP_CLIENT_ID)}
+  $s('spLogin').addEventListener('click',login);
+  $s('acctLogout').addEventListener('click',clearSpotify);
+  const p=new URLSearchParams(location.search);
+  if(p.get('code')||p.get('error')){
+    history.replaceState({},'',location.pathname);
+    if(typeof openApp==='function')openApp('music');
+    if(p.get('error')){msg('Spotify login was cancelled or denied ('+p.get('error')+').');return}
+    if(p.get('state')!==LS.get('sp_state')){msg('Login check failed (state mismatch). Try again.');return}
+    try{await tokenCall({client_id:LS.get('sp_client'),grant_type:'authorization_code',code:p.get('code'),redirect_uri:redirectUri(),code_verifier:LS.get('sp_verifier')});LS.del('sp_verifier');LS.del('sp_state')}catch(e){msg('Could not finish login: '+e.message);return}
+  }
+  showProfile();
+}
+boot();
+})();
+</script>
+<script async defer src="https://accounts.google.com/gsi/client"></script>
+<script>
+/* Log in with Google: Google Identity Services. The server checks Google's token, then signs the person into Nomad. */
+(function(){
+const API=(location.protocol==='file:'||['localhost','127.0.0.1','nomad-en95.onrender.com'].indexOf(location.hostname)<0)?'https://nomad-en95.onrender.com':'';
+const $g=id=>document.getElementById(id);
+const say=t=>{$g('gMsg').textContent=t||''};
+async function onCredential(resp){
+  say('');
+  try{
+    const r=await fetch(API+'/api/google',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({credential:resp.credential})});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok)throw new Error(j.error||('Error '+r.status));
+    try{localStorage.setItem('nomad_token',j.token)}catch(e){}
+    if(window.nomadUnlock)window.nomadUnlock(j.username);
+  }catch(e){say(e.message)}
+}
+async function start(){
+  let cfg={};
+  try{const r=await fetch(API+'/api/config');cfg=await r.json()}catch(e){say('Cannot reach the server. It may be waking up.');return}
+  if(!cfg.googleClientId){$g('googleWrap').style.display='none';return}
+  let tries=0;
+  (function wait(){
+    if(window.google&&google.accounts&&google.accounts.id){
+      google.accounts.id.initialize({client_id:cfg.googleClientId,callback:onCredential});
+      google.accounts.id.renderButton($g('googleBtn'),{theme:'filled_blue',size:'large',text:'signin_with',width:300});
+    }else if(tries++<100){setTimeout(wait,100)}else{say('Google sign-in could not load. Check your connection.')}
+  })();
+}
+start();
 })();
 </script>
 </body>
