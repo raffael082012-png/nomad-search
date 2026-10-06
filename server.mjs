@@ -116,7 +116,40 @@ const fastify = Fastify({
     })
 });
 
-const sendDesktop = async (_request, reply) => reply.type('text/html; charset=utf-8').sendFile('nomad_io-games.html');
+// If several nomad_io*.html files end up in the repo (old copies, "(1)" copies), serve the one with the newest "build YYYY-MM-DD-x" stamp.
+const SERVER_BUILD = '2026-10-06-e';
+function pickDesktop() {
+  let stamped = '';
+  let stampedBuild = '';
+  let newest = '';
+  let newestTime = 0;
+  try {
+    for (const name of fs.readdirSync(here)) {
+      if (!/^nomad_io.*\.html$/i.test(name)) continue;
+      const full = path.join(here, name);
+      const time = fs.statSync(full).mtimeMs;
+      if (time >= newestTime) { newest = name; newestTime = time; }
+      const match = fs.readFileSync(full, 'utf8').match(/build (\d{4}-\d{2}-\d{2}-[a-z0-9]+)/);
+      const found = match ? match[1] : '';
+      if (found > stampedBuild) { stamped = name; stampedBuild = found; }
+    }
+  } catch (error) {
+    console.error('Could not scan for the desktop page:', error);
+  }
+  const file = stamped || (fs.existsSync(path.join(here, 'nomad_io-games.html')) ? 'nomad_io-games.html' : newest);
+  return { file, build: stampedBuild };
+}
+const desktop = pickDesktop();
+console.log(`Desktop page: ${desktop.file || 'NONE FOUND'} (build ${desktop.build || 'unknown'}), server build ${SERVER_BUILD}`);
+// Always answers 200 so Render's health check passes even if the desktop file is renamed or missing.
+fastify.get('/healthz', async (_request, reply) => reply.type('text/plain').header('cache-control', 'no-store').send('ok'));
+const sendDesktop = async (_request, reply) => {
+  if (!desktop.file) {
+    return reply.code(200).type('text/html; charset=utf-8').send('<!doctype html><title>nomad.io</title><body style="font:16px system-ui;background:#05070f;color:#fff;padding:40px"><h1>nomad.io</h1><p>The server is running, but no nomad_io*.html page was found in the repo. Upload nomad_io-games.html to GitHub.</p></body>');
+  }
+  return reply.type('text/html; charset=utf-8').header('cache-control', 'no-cache').sendFile(desktop.file);
+};
+fastify.get('/api/version', async (_request, reply) => reply.header('cache-control', 'no-store').send({ server: SERVER_BUILD, desktopFile: desktop.file, desktopBuild: desktop.build }));
 fastify.get('/', sendDesktop);
 fastify.get('/desktop', sendDesktop);
 fastify.get('/search', async (_request, reply) => reply.type('text/html; charset=utf-8').sendFile('index.html'));
@@ -190,11 +223,15 @@ fastify.get('/api/search', async (request, reply) => {
 // ---------- Nomad accounts (username + password) ----------
 // Stored OUTSIDE the public folder. On free Render the disk resets on redeploy/restart, so accounts can be lost; set DATA_DIR to a persistent disk to keep them.
 const dataDir = process.env.DATA_DIR || path.join(os.tmpdir(), 'nomad-data');
-fs.mkdirSync(dataDir, { recursive: true });
+let canSave = true;
+try { fs.mkdirSync(dataDir, { recursive: true }); } catch (error) { canSave = false; console.error('Accounts will only be kept in memory:', error); }
 const usersFile = path.join(dataDir, 'users.json');
 let users = {};
 try { users = JSON.parse(fs.readFileSync(usersFile, 'utf8')); } catch { /* first run */ }
-const saveUsers = () => { const tmp = usersFile + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(users)); fs.renameSync(tmp, usersFile); };
+const saveUsers = () => {
+  if (!canSave) return;
+  try { const tmp = usersFile + '.tmp'; fs.writeFileSync(tmp, JSON.stringify(users)); fs.renameSync(tmp, usersFile); } catch (error) { console.error('Could not save accounts:', error); }
+};
 const hashPassword = (password, salt) => new Promise((resolve, reject) => scryptCb(password, salt, 64, (err, key) => err ? reject(err) : resolve(key)));
 const sessions = new Map();
 const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
@@ -315,6 +352,9 @@ fastify.register(fastifyStatic, { root: here, decorateReply: true });
 fastify.register(fastifyStatic, { root: scramjetPath, prefix: '/scram/', decorateReply: false });
 fastify.register(fastifyStatic, { root: libcurlPath, prefix: '/libcurl/', decorateReply: false });
 fastify.register(fastifyStatic, { root: baremuxPath, prefix: '/baremux/', decorateReply: false });
+
+process.on('uncaughtException', error => console.error('Uncaught error:', error));
+process.on('unhandledRejection', error => console.error('Unhandled rejection:', error));
 
 fastify.listen({ port, host: '0.0.0.0' }).then(() => {
   console.log(`Nomad is listening on port ${port}`);
